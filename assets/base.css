@@ -1,0 +1,66 @@
+/* Gaya bersama: tema papan tulis yang sama dengan Tangkap Suku, dirancang untuk proyektor kelas. */
+:root{
+  --board:#16302a;
+  --board-deep:#0c1c18;
+  --chalk:#f3f1e7;
+  --chalk-dim:#a9b8ae;
+  --yellow:#f4c84a;
+  --sky:#7cc8ff;
+  --good:#5fd394;
+  --bad:#ff7b6b;
+  --lilac:#c4a8ff;
+  --line:rgba(243,241,231,.16);
+  --panel:rgba(12,28,24,.92);
+  --f-display:'Bricolage Grotesque','Arial Rounded MT Bold',system-ui,sans-serif;
+  --f-body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{background:var(--board-deep);color:var(--chalk);font-family:var(--f-body);font-size:16px;line-height:1.5}
+button,select,input{font:inherit;color:inherit}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--yellow);outline-offset:3px}
+.chalkboard{background:
+  linear-gradient(var(--line) 1px,transparent 1px) 0 0/48px 48px,
+  linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/48px 48px,
+  radial-gradient(ellipse at 50% 30%,var(--board),var(--board-deep));}
+
+h1,h2,h3{font-family:var(--f-display);font-weight:800;margin:0;text-wrap:balance;line-height:1.04}
+h1{font-size:clamp(44px,7vw,96px);letter-spacing:-.02em}
+h1 span,h2 span{color:var(--yellow)}
+h2{font-size:clamp(28px,4vw,52px)}
+p{margin:0}
+.eyebrow{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--chalk-dim);font-weight:700}
+.lead{font-size:clamp(16px,1.6vw,20px);color:var(--chalk-dim);max-width:60ch}
+kbd{border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:var(--f-body);font-size:12px}
+.kbd{font-size:13px;color:var(--chalk-dim)}
+
+.btns{display:flex;flex-wrap:wrap;gap:10px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:12px;padding:13px 20px;font-weight:700;font-size:17px;cursor:pointer;background:var(--yellow);color:var(--board-deep);text-decoration:none}
+.btn.ghost{background:transparent;color:var(--chalk);border:2px solid var(--line)}
+.btn:hover{filter:brightness(1.06)}
+.btn.ghost:hover{border-color:var(--chalk-dim)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.card{background:var(--board);border:2px solid var(--line);border-radius:18px;padding:clamp(20px,3vw,40px);box-shadow:0 30px 80px rgba(0,0,0,.45)}
+
+/* pengaturan (radio pil & checkbox) */
+.settings{display:flex;flex-direction:column;gap:14px;background:rgba(12,28,24,.55);border:1px solid var(--line);border-radius:14px;padding:18px}
+.field{display:flex;flex-direction:column;gap:6px;border:0;margin:0;padding:0;min-width:0}
+.field>legend,.field>span{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--chalk-dim);font-weight:700;padding:0;margin-bottom:6px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;font-size:15px}
+.seg input:checked+label{background:var(--chalk);color:var(--board-deep);border-color:var(--chalk);font-weight:700}
+.seg input:focus-visible+label{outline:3px solid var(--yellow);outline-offset:2px}
+.checks{display:flex;flex-direction:column;gap:6px}
+.checks label{display:flex;gap:10px;align-items:center;cursor:pointer;font-size:15px}
+.checks input{width:18px;height:18px;accent-color:var(--yellow);flex:none}
+.num-in{width:7ch;background:var(--board-deep);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+
+.back{position:fixed;left:16px;top:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:14px;text-decoration:none}
+.back:hover{border-color:var(--chalk-dim)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
