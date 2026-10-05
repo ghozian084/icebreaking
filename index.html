@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pecah Es</title>
+<meta name="description" content="Kumpulan ice breaking interaktif untuk kelas SMP dan SMA, siap ditampilkan lewat proyektor.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/base.css">
+<style>
+.wrap{width:min(1120px,100%);margin:0 auto;padding:clamp(28px,6vw,72px) 16px 48px}
+header .lead{margin-top:14px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:32px 0 18px}
+.filters button{background:transparent;border:1px solid var(--line);border-radius:999px;padding:8px 16px;cursor:pointer;font-size:15px}
+.filters button[aria-pressed="true"]{background:var(--chalk);color:var(--board-deep);border-color:var(--chalk);font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:16px}
+.game{position:relative;display:flex;flex-direction:column;gap:12px;background:var(--board);border:2px solid var(--line);border-radius:18px;padding:22px;text-decoration:none;transition:transform .15s,border-color .15s;min-width:0}
+.game:hover{transform:translateY(-3px);border-color:var(--accent)}
+.game:focus-visible{border-color:var(--accent)}
+.game .art{height:120px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 14%,transparent);border:1px dashed color-mix(in srgb,var(--accent) 50%,transparent);font-family:var(--f-display);font-weight:800;font-size:44px;color:var(--accent);overflow:hidden}
+.game h3{font-size:clamp(24px,2.6vw,30px)}
+.game p{color:var(--chalk-dim)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:4px}
+.tags span{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--chalk-dim)}
+.tags .lvl{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+.play{font-weight:700;color:var(--accent)}
+.empty{color:var(--chalk-dim);padding:20px 0}
+.tips{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:14px;margin-top:48px}
+.tips div{border-left:4px solid var(--yellow);padding:4px 0 4px 14px}
+.tips b{display:block;font-family:var(--f-display);font-size:19px;margin-bottom:4px}
+.tips p{color:var(--chalk-dim);font-size:15px}
+footer{margin-top:48px;color:var(--chalk-dim);font-size:14px;border-top:1px solid var(--line);padding-top:18px}
+/* ilustrasi kecil kartu */
+.mini-chips{display:flex;gap:10px;transform:rotate(-4deg)}
+.mini-chips i{font-family:'Times New Roman',serif;font-style:italic;background:var(--chalk);color:var(--board-deep);border-radius:10px;padding:4px 12px;font-size:30px}
+.mini-vs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;width:100%;height:100%;font-size:22px}
+.mini-vs b{display:grid;place-items:center;height:100%}
+.mini-vs b:first-child{background:color-mix(in srgb,var(--yellow) 25%,transparent);color:var(--yellow)}
+.mini-vs b:last-child{background:color-mix(in srgb,var(--sky) 25%,transparent);color:var(--sky)}
+.mini-vs em{font-style:normal;font-size:15px;color:var(--chalk);padding:0 10px}
+.mini-wheel{width:96px;height:96px;border-radius:50%;background:conic-gradient(var(--yellow) 0 60deg,var(--sky) 0 120deg,var(--good) 0 180deg,var(--bad) 0 240deg,var(--lilac) 0 300deg,var(--chalk) 0);border:4px solid var(--board-deep);box-shadow:0 0 0 2px var(--line)}
+</style>
+</head>
+<body class="chalkboard">
+<main class="wrap">
+  <header>
+    <div class="eyebrow">Kumpulan ice breaking kelas · SMP &amp; SMA</div>
+    <h1>Pecah <span>Es</span></h1>
+    <p class="lead">Permainan pembuka singkat untuk mencairkan suasana kelas. Buka di laptop, sambungkan ke proyektor, tekan <kbd>F11</kbd> untuk layar penuh, lalu mulai.</p>
+  </header>
+
+  <div class="filters" role="group" aria-label="Saring permainan">
+    <button type="button" data-f="all" aria-pressed="true">Semua</button>
+    <button type="button" data-f="smp" aria-pressed="false">SMP</button>
+    <button type="button" data-f="sma" aria-pressed="false">SMA</button>
+    <button type="button" data-f="gerak" aria-pressed="false">Siswa bergerak</button>
+    <button type="button" data-f="ngobrol" aria-pressed="false">Saling kenal</button>
+    <button type="button" data-f="pelajaran" aria-pressed="false">Pembuka pelajaran</button>
+  </div>
+
+  <section class="grid" id="grid" aria-label="Daftar ice breaking">
+    <a class="game" href="games/tangkap-suku.html" data-tags="smp gerak pelajaran" style="--accent:var(--yellow)">
+      <div class="art" aria-hidden="true"><div class="mini-chips"><i>3x</i><i>5</i><i>y</i></div></div>
+      <h3>Tangkap Suku</h3>
+      <p>Suku aljabar berjatuhan di layar. Siswa menangkapnya dengan gerakan tangan di depan kamera sesuai misi: konstanta, variabel, atau koefisien.</p>
+      <div class="tags"><span class="lvl">SMP</span><span>Matematika</span><span>Kamera / mouse</span><span>10–15 menit</span></div>
+      <span class="play">Mainkan →</span>
+    </a>
+    <a class="game" href="games/ini-atau-itu.html" data-tags="smp sma gerak ngobrol" style="--accent:var(--sky)">
+      <div class="art" aria-hidden="true"><div class="mini-vs"><b>Bakso</b><em>atau</em><b>Mie ayam</b></div></div>
+      <h3>Ini atau Itu?</h3>
+      <p>Dua pilihan muncul di layar. Siswa pindah ke sisi kelas sesuai pilihannya sebelum waktu habis, lalu beberapa siswa menjelaskan alasannya.</p>
+      <div class="tags"><span class="lvl">SMP</span><span class="lvl">SMA</span><span>Tanpa alat</span><span>5–10 menit</span></div>
+      <span class="play">Mainkan →</span>
+    </a>
+    <a class="game" href="games/roda-kenalan.html" data-tags="smp sma ngobrol" style="--accent:var(--good)">
+      <div class="art" aria-hidden="true"><div class="mini-wheel"></div></div>
+      <h3>Roda Kenalan</h3>
+      <p>Putar roda untuk memilih kategori dan pertanyaan, lalu roda memilih nomor absen yang menjawab. Cocok untuk awal semester atau kelas baru.</p>
+      <div class="tags"><span class="lvl">SMP</span><span class="lvl">SMA</span><span>Tanpa alat</span><span>5–15 menit</span></div>
+      <span class="play">Mainkan →</span>
+    </a>
+  </section>
+  <p class="empty" id="empty" hidden>Belum ada permainan untuk pilihan ini.</p>
+
+  <section class="tips" aria-label="Tips memakai di kelas">
+    <div><b>Layar penuh</b><p>Tekan <kbd>F11</kbd> di Chrome atau Edge agar tulisan terbaca jelas dari bangku belakang.</p></div>
+    <div><b>Mode kamera</b><p>Tangkap Suku butuh webcam dan internet. Buka lewat alamat https atau localhost agar izin kamera muncul.</p></div>
+    <div><b>Cukup 5–10 menit</b><p>Ice breaking paling efektif saat singkat. Hentikan ketika kelas sudah hangat, lalu masuk ke materi.</p></div>
+  </section>
+
+  <footer>Pecah Es · semua permainan berjalan langsung di browser, tanpa akun dan tanpa menyimpan data siswa.</footer>
+</main>
+<script>
+const btns = document.querySelectorAll('.filters button');
+const games = document.querySelectorAll('.game');
+btns.forEach(b => b.addEventListener('click', () => {
+  btns.forEach(x => x.setAttribute('aria-pressed', x === b));
+  const f = b.dataset.f;
+  let shown = 0;
+  games.forEach(g => {
+    const on = f === 'all' || g.dataset.tags.split(' ').includes(f);
+    g.hidden = !on; if (on) shown++;
+  });
+  document.getElementById('empty').hidden = shown > 0;
+}));
+</script>
+</body>
+</html>

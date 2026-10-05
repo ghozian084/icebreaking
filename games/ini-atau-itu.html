@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ini atau Itu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+/* Layout: layar dibelah dua (kiri kuning, kanan biru) mengikuti sisi ruang kelas. Bilah atas: kategori, nomor soal, hitung mundur. Bilah bawah: tombol guru. */
+html,body{height:100%}
+body{overflow:hidden}
+#stage{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
+.top{display:flex;align-items:center;justify-content:center;gap:18px;padding:14px 16px 10px 120px;min-height:64px}
+.top .cat{font-size:clamp(13px,1.4vw,18px);letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--chalk-dim)}
+.top .n{font-family:var(--f-display);font-weight:800;font-size:clamp(16px,1.8vw,22px);font-variant-numeric:tabular-nums}
+.split{position:relative;display:grid;grid-template-columns:1fr 1fr;min-height:0}
+.side{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(8px,2vh,20px);padding:24px clamp(16px,4vw,64px);text-align:center;transition:opacity .3s,filter .3s;min-width:0}
+.side.a{background:linear-gradient(160deg,rgba(244,200,74,.2),rgba(244,200,74,.06));border-right:3px dashed rgba(243,241,231,.3)}
+.side.b{background:linear-gradient(200deg,rgba(124,200,255,.2),rgba(124,200,255,.06))}
+.side .dir{font-size:clamp(14px,1.6vw,22px);letter-spacing:.16em;text-transform:uppercase;font-weight:700}
+.side.a .dir{color:var(--yellow)} .side.b .dir{color:var(--sky)}
+.side .opt{font-family:var(--f-display);font-weight:800;font-size:clamp(34px,6.4vw,104px);line-height:1;text-wrap:balance;overflow-wrap:anywhere}
+.side .emo{font-size:clamp(48px,8vw,120px);line-height:1}
+.vs{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:clamp(84px,11vw,160px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:var(--board-deep);border:3px solid var(--line);text-align:center;font-family:var(--f-display);font-weight:800}
+.vs .secs{font-size:clamp(34px,5vw,72px);line-height:1;font-variant-numeric:tabular-nums;color:var(--chalk)}
+.vs .word{font-size:clamp(16px,2vw,28px);color:var(--chalk-dim)}
+.vs svg{position:absolute;inset:-3px;width:calc(100% + 6px);height:calc(100% + 6px);transform:rotate(-90deg)}
+.vs circle{fill:none;stroke:var(--yellow);stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset .2s linear}
+#stage.locked .vs{border-color:var(--yellow)}
+.bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px 16px;background:linear-gradient(0deg,var(--board-deep),transparent)}
+.prompt{flex:1 1 360px;font-size:clamp(16px,1.9vw,26px);min-height:1.5em;text-wrap:balance}
+.prompt b{color:var(--yellow)}
+.bottom .btns{flex:none}
+.bottom .btn{padding:10px 16px;font-size:16px}
+
+/* layar pengaturan & selesai */
+.layer{position:fixed;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow:auto;background:rgba(8,20,17,.86)}
+.layer .card{width:min(940px,100%);max-height:100%;overflow:auto}
+.cols{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:clamp(20px,3vw,40px);margin-top:18px}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
+.howto{display:flex;flex-direction:column;gap:14px}
+.howto ol{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:8px}
+@media (max-width:640px){
+  .split{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
+  .side.a{border-right:0;border-bottom:3px dashed rgba(243,241,231,.3)}
+  .top{padding-left:110px;justify-content:flex-end}
+}
+</style>
+</head>
+<body class="chalkboard">
+<a class="back" href="../index.html">← Menu</a>
+<div id="stage">
+  <div class="top"><span class="cat" id="cat">Santai</span><span class="n" id="count">1 / 12</span></div>
+  <div class="split">
+    <div class="side a"><span class="dir">← Sisi kiri</span><span class="emo" id="emoA" aria-hidden="true"></span><span class="opt" id="optA"></span></div>
+    <div class="side b"><span class="dir">Sisi kanan →</span><span class="emo" id="emoB" aria-hidden="true"></span><span class="opt" id="optB"></span></div>
+    <div class="vs" aria-live="polite">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle id="ring" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg>
+      <div><div class="secs" id="secs" hidden>10</div><div class="word" id="word">atau</div></div>
+    </div>
+  </div>
+  <div class="bottom">
+    <p class="prompt" id="prompt" aria-live="polite"></p>
+    <div class="btns">
+      <button class="btn" type="button" id="btnGo">Mulai hitung <kbd>Spasi</kbd></button>
+      <button class="btn ghost" type="button" id="btnNext">Berikutnya <kbd>→</kbd></button>
+    </div>
+  </div>
+</div>
+
+<!-- PENGATURAN -->
+<div class="layer" id="setup">
+  <div class="card">
+    <div class="eyebrow">Ice breaking gerak · SMP &amp; SMA</div>
+    <h1>Ini atau <span>Itu?</span></h1>
+    <div class="cols">
+      <div class="howto">
+        <p class="lead">Dua pilihan muncul di layar. Siswa berdiri dan pindah ke sisi kelas yang sesuai pilihannya sebelum waktu habis. Tidak ada jawaban benar atau salah.</p>
+        <ol>
+          <li>Kosongkan sedikit ruang di depan kelas. Sisi kiri papan = pilihan kiri, sisi kanan = pilihan kanan.</li>
+          <li>Tekan <b>Mulai hitung</b>. Siswa punya beberapa detik untuk memilih sisi.</li>
+          <li>Saat waktu habis, ikuti instruksi di bawah layar: minta satu-dua siswa menjelaskan alasannya.</li>
+          <li>Tidak bisa banyak bergerak? Ganti dengan angkat tangan kiri atau kanan.</li>
+        </ol>
+        <p class="kbd"><kbd>Spasi</kbd> mulai hitung · <kbd>→</kbd> atau <kbd>Enter</kbd> pertanyaan berikutnya · <kbd>Esc</kbd> pengaturan</p>
+      </div>
+      <form class="settings" id="form">
+        <fieldset class="field"><legend>Kategori</legend>
+          <div class="checks">
+            <label><input type="checkbox" name="cat" value="santai" checked> Santai &amp; kesukaan</label>
+            <label><input type="checkbox" name="cat" value="sekolah" checked> Kehidupan sekolah</label>
+            <label><input type="checkbox" name="cat" value="andai" checked> Seandainya…</label>
+            <label><input type="checkbox" name="cat" value="depan"> Masa depan (cocok untuk SMA)</label>
+          </div>
+        </fieldset>
+        <fieldset class="field"><legend>Waktu memilih</legend>
+          <div class="seg">
+            <input type="radio" name="dur" id="d5" value="5"><label for="d5">5 dtk</label>
+            <input type="radio" name="dur" id="d8" value="8" checked><label for="d8">8 dtk</label>
+            <input type="radio" name="dur" id="d12" value="12"><label for="d12">12 dtk</label>
+          </div>
+        </fieldset>
+        <fieldset class="field"><legend>Jumlah pertanyaan</legend>
+          <div class="seg">
+            <input type="radio" name="len" id="l6" value="6"><label for="l6">6</label>
+            <input type="radio" name="len" id="l10" value="10" checked><label for="l10">10</label>
+            <input type="radio" name="len" id="l15" value="15"><label for="l15">15</label>
+            <input type="radio" name="len" id="l0" value="0"><label for="l0">Semua</label>
+          </div>
+        </fieldset>
+        <div class="checks"><label><input type="checkbox" id="snd" checked> Suara hitung mundur</label></div>
+        <div class="btns"><button class="btn" type="submit">Mulai</button></div>
+        <p class="kbd" id="err" role="status"></p>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- SELESAI -->
+<div class="layer" id="done" hidden>
+  <div class="card">
+    <div class="eyebrow">Selesai</div>
+    <h2>Kelas sudah <span>hangat!</span></h2>
+    <p class="lead" style="margin-top:12px">Pertanyaan penutup: dari semua pilihan tadi, kapan kamu merasa sendirian di satu sisi? Bagaimana rasanya berbeda pilihan dengan teman?</p>
+    <div class="btns" style="margin-top:22px">
+      <button class="btn" type="button" id="btnAgain">Main lagi</button>
+      <button class="btn ghost" type="button" id="btnSetup">Ubah pengaturan</button>
+      <a class="btn ghost" href="../index.html">Ke menu utama</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const BANK = {
+  santai: { name: 'Santai & kesukaan', q: [
+    ['🍜', 'Mie goreng', '🍲', 'Mie kuah'],
+    ['🌅', 'Bangun pagi', '🌙', 'Begadang'],
+    ['🐱', 'Kucing', '🐶', 'Anjing'],
+    ['🏖️', 'Pantai', '⛰️', 'Gunung'],
+    ['🎬', 'Nonton film', '🎮', 'Main game'],
+    ['🍵', 'Es teh', '🍊', 'Es jeruk'],
+    ['🍚', 'Nasi goreng', '🍡', 'Bakso'],
+    ['🌧️', 'Hujan', '☀️', 'Cerah'],
+    ['🏠', 'Libur di rumah', '🚌', 'Jalan-jalan jauh'],
+    ['🎧', 'Dengar musik', '📖', 'Baca cerita'],
+    ['🍫', 'Manis', '🌶️', 'Pedas'],
+    ['📱', 'Chat', '📞', 'Telepon'],
+  ]},
+  sekolah: { name: 'Kehidupan sekolah', q: [
+    ['👥', 'Kerja kelompok', '🧍', 'Kerja sendiri'],
+    ['⬆️', 'Duduk depan', '⬇️', 'Duduk belakang'],
+    ['📝', 'Ujian tulis', '🎤', 'Presentasi'],
+    ['🔢', 'Matematika', '📚', 'Bahasa'],
+    ['☀️', 'Belajar pagi', '🌙', 'Belajar malam'],
+    ['⚽', 'Ekskul olahraga', '🎨', 'Ekskul seni'],
+    ['🛒', 'Jajan di kantin', '🍱', 'Bawa bekal'],
+    ['✍️', 'Catat di buku', '📷', 'Foto papan tulis'],
+    ['🧪', 'Praktikum', '🗣️', 'Diskusi'],
+    ['🎒', 'Tas ransel', '👜', 'Tas selempang'],
+  ]},
+  andai: { name: 'Seandainya…', q: [
+    ['🕊️', 'Bisa terbang', '👻', 'Bisa menghilang'],
+    ['🐾', 'Bicara dengan hewan', '🌏', 'Fasih semua bahasa'],
+    ['📵', 'Seminggu tanpa HP', '🍬', 'Seminggu tanpa jajan'],
+    ['⏪', 'Kembali ke masa lalu', '⏩', 'Melihat masa depan'],
+    ['🌟', 'Terkenal', '💰', 'Kaya diam-diam'],
+    ['🤖', 'Punya robot pembantu', '🐉', 'Punya hewan ajaib'],
+    ['🧊', 'Selalu kedinginan', '🔥', 'Selalu kepanasan'],
+    ['🦸', 'Jadi pahlawan super', '🧙', 'Jadi penyihir'],
+    ['🏝️', 'Tinggal di pulau sepi', '🏙️', 'Tinggal di kota ramai'],
+  ]},
+  depan: { name: 'Masa depan', q: [
+    ['🏡', 'Kuliah dekat rumah', '🧳', 'Kuliah di kota lain'],
+    ['🏢', 'Kerja kantoran', '🛍️', 'Usaha sendiri'],
+    ['🎓', 'Langsung kuliah', '💼', 'Kerja dulu'],
+    ['❤️', 'Kerja sesuai minat', '💵', 'Kerja bergaji besar'],
+    ['👫', 'Satu sahabat dekat', '🎉', 'Banyak teman'],
+    ['🗺️', 'Kerja di luar negeri', '🇮🇩', 'Membangun daerah sendiri'],
+    ['🧭', 'Rencana matang', '🎲', 'Ikuti arus'],
+    ['🎯', 'Ahli di satu bidang', '🧩', 'Bisa banyak hal'],
+  ]},
+};
+const PROMPTS = [
+  'Minta <b>satu siswa dari tiap sisi</b> menjelaskan alasannya dalam satu kalimat.',
+  'Sisi yang <b>lebih sedikit</b>: siapa yang mau membela pilihannya?',
+  'Tanya satu siswa: <b>apa yang hampir membuatmu pindah sisi?</b>',
+  'Ajak siswa <b>menyapa satu teman</b> di sisinya yang jarang diajak ngobrol.',
+  'Pilih satu siswa yang tadi <b>paling cepat</b> memilih. Kenapa begitu yakin?',
+  'Minta tiap sisi menyebut <b>satu kelebihan pilihan sisi lawan</b>.',
+];
+
+let deck = [], i = 0, dur = 8, t = 0, timer = null, soundOn = true, ctx = null;
+const shuffle = a => { for (let k = a.length - 1; k > 0; k--){ const j = Math.floor(Math.random() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; } return a; };
+
+function beep(f, d = .1, g = .12){
+  if (!soundOn) return;
+  try {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), v = ctx.createGain(), n = ctx.currentTime;
+    o.type = 'triangle'; o.frequency.value = f;
+    v.gain.setValueAtTime(g, n); v.gain.exponentialRampToValueAtTime(.001, n + d);
+    o.connect(v).connect(ctx.destination); o.start(n); o.stop(n + d);
+  } catch (e) {}
+}
+
+function start(){
+  const f = $('#form');
+  const cats = [...f.querySelectorAll('input[name=cat]:checked')].map(x => x.value);
+  if (!cats.length){ $('#err').textContent = 'Pilih minimal satu kategori.'; return; }
+  $('#err').textContent = '';
+  dur = +f.dur.value; soundOn = $('#snd').checked;
+  const all = shuffle(cats.flatMap(c => BANK[c].q.map(q => ({ q, cat: BANK[c].name }))));
+  const len = +f.len.value;
+  deck = len ? all.slice(0, len) : all;
+  i = 0;
+  $('#setup').hidden = true; $('#done').hidden = true;
+  show();
+}
+function show(){
+  stopTimer();
+  const { q, cat } = deck[i];
+  $('#emoA').textContent = q[0]; $('#optA').textContent = q[1];
+  $('#emoB').textContent = q[2]; $('#optB').textContent = q[3];
+  $('#cat').textContent = cat;
+  $('#count').textContent = `${i + 1} / ${deck.length}`;
+  $('#stage').classList.remove('locked');
+  $('#secs').hidden = true; $('#word').hidden = false; $('#word').textContent = 'atau';
+  $('#ring').style.strokeDashoffset = 100;
+  $('#prompt').innerHTML = 'Bacakan kedua pilihan, lalu tekan <b>Mulai hitung</b>.';
+  $('#btnGo').disabled = false;
+  $('#btnNext').innerHTML = i === deck.length - 1 ? 'Selesai <kbd>→</kbd>' : 'Berikutnya <kbd>→</kbd>';
+}
+function go(){
+  if (timer || $('#stage').classList.contains('locked')) return;
+  t = dur;
+  $('#btnGo').disabled = true;
+  $('#word').hidden = true; $('#secs').hidden = false; $('#secs').textContent = t;
+  $('#prompt').innerHTML = 'Pindah ke sisi pilihanmu sekarang!';
+  $('#ring').style.strokeDashoffset = 0;
+  beep(520);
+  timer = setInterval(() => {
+    t--;
+    $('#ring').style.strokeDashoffset = 100 - (t / dur) * 100;
+    if (t > 0){ $('#secs').textContent = t; if (t <= 3) beep(660); return; }
+    stopTimer();
+    beep(880, .35, .15);
+    $('#stage').classList.add('locked');
+    $('#secs').hidden = true; $('#word').hidden = false; $('#word').textContent = 'Kunci!';
+    $('#prompt').innerHTML = PROMPTS[i % PROMPTS.length];
+  }, 1000);
+}
+function stopTimer(){ clearInterval(timer); timer = null; }
+function next(){
+  if (i < deck.length - 1){ i++; show(); }
+  else { stopTimer(); $('#done').hidden = false; }
+}
+function openSetup(){ stopTimer(); $('#done').hidden = true; $('#setup').hidden = false; }
+
+$('#form').addEventListener('submit', e => { e.preventDefault(); start(); });
+$('#btnGo').addEventListener('click', go);
+$('#btnNext').addEventListener('click', next);
+$('#btnAgain').addEventListener('click', start);
+$('#btnSetup').addEventListener('click', openSetup);
+addEventListener('keydown', e => {
+  const overlay = !$('#setup').hidden || !$('#done').hidden;
+  if (e.key === 'Escape'){ openSetup(); return; }
+  if (overlay || e.target.closest('a,input')) return;
+  if (e.code === 'Space'){ e.preventDefault(); go(); }
+  else if (e.key === 'ArrowRight' || e.key === 'Enter'){ e.preventDefault(); next(); }
+});
+</script>
+</body>
+</html>
