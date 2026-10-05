@@ -191,7 +191,7 @@ kbd{border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:v
             <li>Baca misi di atas layar. Tangkap suku yang benar: +10. Salah: −5.</li>
             <li>Mode 2 tim: layar dibagi dua, tiap tim menangkap di sisinya sendiri.</li>
           </ol>
-          <p class="kbd"><kbd>Spasi</kbd> jeda · <kbd>Enter</kbd> lanjut · <kbd>Esc</kbd> ke menu</p>
+          <p class="kbd"><kbd>Spasi</kbd> jeda · <kbd>Enter</kbd> lanjut · <kbd>Esc</kbd> ke menu · <kbd>D</kbd> info kecepatan</p>
         </div>
         <form class="settings" id="setForm">
           <div class="field"><span>Mode</span>
@@ -424,12 +424,15 @@ function setLayer(name){
 
 /* ---------- kamera & deteksi pose ---------- */
 let pose = null, lastVT = -1;
-const prevHands = new Map();
+let tracks = [], nextTrackId = 1;
+const LOST_MS = 250;
+const perf = { show: false, det: 0, detN: 0, fpsN: 0, winT: 0, detFps: 0, fps: 0 };
 async function startCamera(){
   const st = $('#status');
   st.className = 'status'; st.textContent = 'Membuka kamera…';
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser ini tidak mendukung akses kamera. Gunakan Chrome atau Edge terbaru.');
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
+  // resolusi kecil cukup: model pose memperkecil gambar ke 256 px, dan kamera kecil jauh lebih ringan
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: 'user' }, audio: false });
   video.srcObject = stream; await video.play();
   if (!pose){
     st.textContent = 'Memuat pendeteksi gerak tubuh (sekali saja, butuh internet)…';
@@ -449,25 +452,84 @@ function toScreen(lm){
   const s = Math.max(W / vw, H / vh), ox = (W - vw * s) / 2, oy = (H - vh * s) / 2;
   return { x: W - (ox + lm.x * vw * s), y: oy + lm.y * vh * s };
 }
+/* Filter One Euro: halus saat tangan diam, cepat mengikuti saat tangan diayun. */
+const lerp = (a, b, k) => a + k * (b - a);
+const alpha = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+function filterTrack(tr, x, y, t){
+  const dt = Math.max(.001, (t - tr.t) / 1000);
+  const ad = alpha(1.5, dt);
+  tr.vx = lerp(tr.vx, (x - tr.rx) / dt, ad); tr.vy = lerp(tr.vy, (y - tr.ry) / dt, ad);
+  const speed = Math.hypot(tr.vx, tr.vy) / H;
+  const a = alpha(1.5 + 8 * speed, dt);
+  tr.x = lerp(tr.x, x, a); tr.y = lerp(tr.y, y, a);
+  tr.rx = x; tr.ry = y; tr.t = t;
+}
 function detect(now){
   if (!pose || video.readyState < 2 || video.currentTime === lastVT) return;
   lastVT = video.currentTime;
+  const t0 = performance.now();
   let res;
   try { res = pose.detectForVideo(video, now); } catch (e) { return; }
-  const hands = [];
-  (res.landmarks || []).forEach((lms, i) => {
+  perf.det = lerp(perf.det, performance.now() - t0, .1); perf.detN++;
+  const pts = [];
+  for (const lms of res.landmarks || []){
     // 15/16 pergelangan, 19/20 ujung telunjuk: titik tangan = rata-rata keduanya
-    [[15, 19], [16, 20]].forEach(([w, f], side) => {
+    for (const [w, f] of [[15, 19], [16, 20]]){
       const a = lms[w], b = lms[f];
-      if (!a || !b || (a.visibility ?? 1) < .45) return;
-      const p = toScreen({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-      const key = i + '-' + side, pv = prevHands.get(key);
-      if (pv){ p.x = pv.x + (p.x - pv.x) * .6; p.y = pv.y + (p.y - pv.y) * .6; }
-      prevHands.set(key, p);
-      hands.push(p);
-    });
+      if (!a || !b || (a.visibility ?? 1) < .4) continue;
+      pts.push(toScreen({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }));
+    }
+  }
+  // cocokkan tiap titik ke jejak tangan terdekat (urutan orang dari model bisa berubah antar-frame)
+  const maxD = Math.max(W, H) * .2, pairs = [];
+  pts.forEach((p, i) => tracks.forEach((tr, j) => {
+    const d = Math.hypot(p.x - tr.x, p.y - tr.y);
+    if (d < maxD) pairs.push([d, i, j]);
+  }));
+  pairs.sort((a, b) => a[0] - b[0]);
+  const usedP = new Set(), usedT = new Set();
+  for (const [, i, j] of pairs){
+    if (usedP.has(i) || usedT.has(j)) continue;
+    usedP.add(i); usedT.add(j);
+    filterTrack(tracks[j], pts[i].x, pts[i].y, now);
+  }
+  pts.forEach((p, i) => {
+    if (!usedP.has(i)) tracks.push({ id: nextTrackId++, x: p.x, y: p.y, rx: p.x, ry: p.y, vx: 0, vy: 0, t: now });
   });
-  G.hands = hands;
+  // tangan yang hilang sebentar (blur, tertutup) tetap dipertahankan agar tidak berkedip
+  tracks = tracks.filter(tr => now - tr.t < LOST_MS);
+}
+
+/* Posisi tangan tiap frame layar. Di antara dua hasil deteksi, posisi diperkirakan dari kecepatannya
+   sehingga lingkaran tangan bergerak mulus. px/py = posisi frame sebelumnya untuk cek tabrakan menyapu. */
+const lastHandPos = new Map();
+function currentHands(now){
+  const hs = [];
+  if (G.input === 'mouse') pointers.forEach((p, id) => hs.push({ id: 'm' + id, x: p.x, y: p.y }));
+  else for (const tr of tracks){
+    const ahead = Math.min(.07, Math.max(0, (now - tr.t) / 1000));
+    hs.push({ id: tr.id, x: tr.x + tr.vx * ahead, y: tr.y + tr.vy * ahead });
+  }
+  const seen = new Set();
+  for (const h of hs){
+    const lp = lastHandPos.get(h.id);
+    h.px = lp ? lp.x : h.x; h.py = lp ? lp.y : h.y;
+    lastHandPos.set(h.id, { x: h.x, y: h.y }); seen.add(h.id);
+  }
+  for (const id of [...lastHandPos.keys()]) if (!seen.has(id)) lastHandPos.delete(id);
+  return hs;
+}
+/* Apakah ruas p0→p1 menyentuh kotak berpusat (cx,cy) dengan setengah ukuran hx,hy? */
+function segHitsBox(x0, y0, x1, y1, cx, cy, hx, hy){
+  let t0 = 0, t1 = 1;
+  for (const [p, d, lo, hi] of [[x0, x1 - x0, cx - hx, cx + hx], [y0, y1 - y0, cy - hy, cy + hy]]){
+    if (Math.abs(d) < 1e-6){ if (p < lo || p > hi) return false; continue; }
+    let a = (lo - p) / d, b = (hi - p) / d;
+    if (a > b) [a, b] = [b, a];
+    t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+    if (t0 > t1) return false;
+  }
+  return true;
 }
 
 /* ---------- input mouse / sentuh ---------- */
@@ -569,14 +631,30 @@ function hideToast(){ $('#toast').style.opacity = 0; toastT = 0; }
 /* ---------- logika ronde ---------- */
 function chipSize(){ return Math.max(34, Math.min(80, H * .075)); }
 function spawn(team){
-  const t = G.m.gen(), size = chipSize();
-  let tw = 0;
-  for (const p of parts(t)){ ctx.font = `${p.it ? 'italic ' : ''}600 ${size}px ${MATHFONT}`; tw += ctx.measureText(p.s).width; }
-  const w = tw + size * .9, h = size * 1.35, m = w / 2 + 16;
+  const t = G.m.gen(), spr = chipSprite(t, chipSize()), { w, h } = spr, m = w / 2 + 16;
   const x0 = G.teams === 2 ? (team ? W / 2 + m : m) : m;
   const x1 = G.teams === 2 ? (team ? W - m : W / 2 - m) : W - m;
   const sp = SPEED[G.speed];
-  G.items.push({ t, x: x0 + Math.random() * Math.max(1, x1 - x0), y: -h, w, h, size, vy: H * sp.fall * (.85 + Math.random() * .3), rot: (Math.random() - .5) * .12, team });
+  G.items.push({ t, spr, x: x0 + Math.random() * Math.max(1, x1 - x0), y: -h, w, h, vy: H * sp.fall * (.85 + Math.random() * .3), rot: (Math.random() - .5) * .12, team });
+}
+/* Kartu suku digambar sekali ke kanvas kecil (termasuk bayangan), lalu tiap frame cukup ditempel. */
+function chipSprite(t, size){
+  const P = parts(t), fonts = P.map(p => `${p.it ? 'italic ' : ''}600 ${size}px ${MATHFONT}`);
+  const ws = P.map((p, i) => { ctx.font = fonts[i]; return ctx.measureText(p.s).width; });
+  const tw = ws.reduce((a, b) => a + b, 0), w = tw + size * .9, h = size * 1.35, pad = 24;
+  const c = document.createElement('canvas');
+  c.width = Math.ceil((w + pad * 2) * DPR); c.height = Math.ceil((h + pad * 2) * DPR);
+  const g = c.getContext('2d');
+  g.scale(DPR, DPR); g.translate(pad + w / 2, pad + h / 2);
+  g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 14; g.shadowOffsetY = 6;
+  rrect(g, -w / 2, -h / 2, w, h, h * .28);
+  g.fillStyle = C.chalk; g.fill();
+  g.shadowColor = 'transparent';
+  g.lineWidth = 3; g.strokeStyle = 'rgba(12,28,24,.25)'; g.stroke();
+  g.fillStyle = C.ink; g.textBaseline = 'middle';
+  let x = -tw / 2;
+  P.forEach((p, i) => { g.font = fonts[i]; g.fillText(p.s, x, size * .04); x += ws[i]; });
+  return { c, w, h, pad };
 }
 function catchItem(it, team){
   const ok = G.m.ok(it.t), rs = G.roundStats;
@@ -622,7 +700,8 @@ function update(dt){
   if (G.state !== 'play') return;
 
   G.t -= dt;
-  $('#mSecs').textContent = Math.max(0, Math.ceil(G.t));
+  const secs = String(Math.max(0, Math.ceil(G.t)));
+  if ($('#mSecs').textContent !== secs) $('#mSecs').textContent = secs;
   $('#timebar').style.transform = `scaleX(${Math.max(0, G.t / G.dur)})`;
   if (G.t <= 0){ endRound(); return; }
 
@@ -632,14 +711,13 @@ function update(dt){
     if (G.spawnT[team] <= 0){ spawn(team); G.spawnT[team] = every * (.8 + Math.random() * .4); }
   }
 
-  const hands = G.input === 'mouse' ? [...pointers.values()] : G.hands;
   const hr = Math.max(26, H * .045);
   for (const it of G.items){
     it.y += it.vy * dt;
     if (it.dead) continue;
-    for (const hd of hands){
-      const dx = Math.abs(hd.x - it.x) - it.w / 2, dy = Math.abs(hd.y - it.y) - it.h / 2;
-      if (dx < hr * .7 && dy < hr * .7){
+    for (const hd of G.hands){
+      // cek seluruh lintasan tangan sejak frame sebelumnya, agar ayunan cepat tidak menembus kartu
+      if (segHitsBox(hd.px, hd.py, hd.x, hd.y, it.x, it.y, it.w / 2 + hr * .7, it.h / 2 + hr * .7)){
         const team = G.teams === 2 ? (hd.x < W / 2 ? 0 : 1) : 0;
         it.dead = true; catchItem(it, team); break;
       }
@@ -649,29 +727,19 @@ function update(dt){
 }
 
 /* ---------- gambar ---------- */
-function rrect(x, y, w, h, r){
-  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+function rrect(g, x, y, w, h, r){
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
 function drawChip(it){
+  const { c, w, h, pad } = it.spr;
   ctx.save(); ctx.translate(it.x, it.y); ctx.rotate(it.rot);
-  ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 6;
-  rrect(-it.w / 2, -it.h / 2, it.w, it.h, it.h * .28);
-  ctx.fillStyle = C.chalk; ctx.fill();
-  ctx.shadowColor = 'transparent';
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(12,28,24,.25)'; ctx.stroke();
-  ctx.fillStyle = C.ink; ctx.textBaseline = 'middle';
-  const P = parts(it.t);
-  let tw = 0;
-  const ws = P.map(p => { ctx.font = `${p.it ? 'italic ' : ''}600 ${it.size}px ${MATHFONT}`; const w = ctx.measureText(p.s).width; tw += w; return w; });
-  let x = -tw / 2;
-  P.forEach((p, i) => { ctx.font = `${p.it ? 'italic ' : ''}600 ${it.size}px ${MATHFONT}`; ctx.fillText(p.s, x, it.size * .04); x += ws[i]; });
+  ctx.drawImage(c, -w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2);
   ctx.restore();
 }
 function drawHands(){
-  const hands = G.input === 'mouse' ? [...pointers.values()] : G.hands;
   const hr = Math.max(26, H * .045);
-  for (const hd of hands){
+  for (const hd of G.hands){
     const col = G.teams === 2 ? (hd.x < W / 2 ? C.yellow : C.sky) : C.yellow;
     ctx.beginPath(); ctx.arc(hd.x, hd.y, hr, 0, Math.PI * 2);
     ctx.fillStyle = col + '33'; ctx.fill();
@@ -690,12 +758,23 @@ function draw(){
     ctx.globalAlpha = 1;
   }
   if (G.state !== 'menu') drawHands();
+  if (perf.show){
+    const txt = G.input === 'cam'
+      ? `Layar ${perf.fps} fps · deteksi ${perf.detFps} fps (${perf.det.toFixed(0)} ms) · ${tracks.length} tangan`
+      : `Layar ${perf.fps} fps · mode mouse`;
+    ctx.font = `700 15px ${getComputedStyle(document.body).fontFamily}`;
+    ctx.fillStyle = 'rgba(12,28,24,.85)'; ctx.fillRect(12, H - 40, ctx.measureText(txt).width + 20, 28);
+    ctx.fillStyle = C.chalk; ctx.textBaseline = 'middle'; ctx.fillText(txt, 22, H - 26); ctx.textBaseline = 'alphabetic';
+  }
 }
 
 let last = performance.now();
 function frame(now){
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (G.input === 'cam') detect(now);
+  G.hands = currentHands(now);
+  perf.fpsN++;
+  if (now - perf.winT >= 1000){ perf.fps = perf.fpsN; perf.detFps = perf.detN; perf.fpsN = perf.detN = 0; perf.winT = now; }
   update(dt); draw();
   requestAnimationFrame(frame);
 }
@@ -738,6 +817,7 @@ addEventListener('keydown', e => {
     else if (G.state === 'recap'){ e.preventDefault(); nextRound(); }
   }
   else if (e.key === 'Escape' && G.state !== 'menu') toMenu();
+  else if (e.key === 'd' || e.key === 'D') perf.show = !perf.show;
 });
 setLayer('menu');
 </script>
