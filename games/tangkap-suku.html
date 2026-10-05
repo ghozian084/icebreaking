@@ -189,6 +189,7 @@ kbd{border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:v
           <ol>
             <li>Berdiri 1,5–2 meter dari kamera sampai badan dan kedua tangan terlihat.</li>
             <li>Baca misi di atas layar. Tangkap suku yang benar: +10. Salah: −5.</li>
+            <li>Gaya Tebas: suku dilempar dari bawah. Sabetkan tangan dengan cepat untuk membelahnya. Satu sabetan kena beberapa suku benar = kombo.</li>
             <li>Mode 2 tim: layar dibagi dua, tiap tim menangkap di sisinya sendiri.</li>
           </ol>
           <p class="kbd"><kbd>Spasi</kbd> jeda · <kbd>Enter</kbd> lanjut · <kbd>Esc</kbd> ke menu · <kbd>D</kbd> info kecepatan</p>
@@ -207,7 +208,13 @@ kbd{border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:v
               <input type="radio" name="dur" id="d45" value="45"><label for="d45">45 dtk</label>
             </div>
           </div>
-          <div class="field"><span>Kecepatan jatuh</span>
+          <div class="field"><span>Gaya permainan</span>
+            <div class="seg">
+              <input type="radio" name="gaya" id="g0" value="fall" checked><label for="g0">Tangkap (suku jatuh)</label>
+              <input type="radio" name="gaya" id="g1" value="ninja"><label for="g1">Tebas (ala Fruit Ninja)</label>
+            </div>
+          </div>
+          <div class="field"><span>Kecepatan</span>
             <div class="seg">
               <input type="radio" name="spd" id="s0" value="0"><label for="s0">Pelan</label>
               <input type="radio" name="spd" id="s1" value="1" checked><label for="s1">Sedang</label>
@@ -240,8 +247,8 @@ kbd{border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:v
       <h2 id="iTitle">Tangkap KONSTANTA</h2>
       <p class="rule" id="iRule"></p>
       <div class="ex-row">
-        <div class="ex yes"><b>Tangkap</b><span class="m" id="iYes"></span></div>
-        <div class="ex no"><b>Biarkan jatuh</b><span class="m" id="iNo"></span></div>
+        <div class="ex yes"><b id="iYesLbl">Tangkap</b><span class="m" id="iYes"></span></div>
+        <div class="ex no"><b id="iNoLbl">Biarkan jatuh</b><span class="m" id="iNo"></span></div>
       </div>
       <p class="count">Mulai dalam <span class="secs" id="iCount">6</span> · tekan <kbd>Enter</kbd> untuk langsung mulai</p>
     </div>
@@ -404,15 +411,17 @@ function beep(f, d = .12, type = 'sine', g = .15, slide = 0){
 }
 const sGood = () => { beep(660, .09, 'triangle'); setTimeout(() => beep(990, .12, 'triangle'), 70); };
 const sBad = () => beep(180, .22, 'sawtooth', .08, .6);
+const sSlice = () => beep(1400, .08, 'sawtooth', .035, .3);
 
 /* ---------- state ---------- */
 const G = {
-  state: 'menu', input: 'mouse', teams: 1, dur: 35, speed: 1,
+  state: 'menu', input: 'mouse', teams: 1, dur: 35, speed: 1, style: 'fall', combo: [0, 0], lastCut: [1e9, 1e9],
   rounds: [], ri: 0, m: null, t: 0, introT: 0,
   scores: [0, 0], roundStats: null, streak: [0, 0],
   items: [], fx: [], hands: [], spawnT: [0, 0], paused: false
 };
-const SPEED = [{ fall: .13, every: 1.3 }, { fall: .19, every: .95 }, { fall: .26, every: .72 }];
+const SPEED = [{ fall: .13, every: 1.3, grav: .9 }, { fall: .19, every: .95, grav: 1.15 }, { fall: .26, every: .72, grav: 1.45 }];
+const SLASH = .8;   // gaya Tebas: kecepatan tangan minimum (tinggi layar per detik) agar dihitung sabetan
 
 const show = (id, on) => { $(id).hidden = !on; };
 function setLayer(name){
@@ -503,6 +512,7 @@ function detect(now){
 /* Posisi tangan tiap frame layar. Di antara dua hasil deteksi, posisi diperkirakan dari kecepatannya
    sehingga lingkaran tangan bergerak mulus. px/py = posisi frame sebelumnya untuk cek tabrakan menyapu. */
 const lastHandPos = new Map();
+const trails = new Map();
 function currentHands(now){
   const hs = [];
   if (G.input === 'mouse') pointers.forEach((p, id) => hs.push({ id: 'm' + id, x: p.x, y: p.y }));
@@ -515,8 +525,15 @@ function currentHands(now){
     const lp = lastHandPos.get(h.id);
     h.px = lp ? lp.x : h.x; h.py = lp ? lp.y : h.y;
     lastHandPos.set(h.id, { x: h.x, y: h.y }); seen.add(h.id);
+    const tr = trails.get(h.id) || [];
+    tr.push({ x: h.x, y: h.y, t: now });
+    while (tr.length && now - tr[0].t > 160) tr.shift();
+    trails.set(h.id, tr);
+    // kecepatan tangan (px/dtk) dirata-rata selama ±100 ms terakhir, tidak dari satu frame yang bisa sangat pendek
+    const o = tr.find(q => now - q.t <= 100) || tr[0];
+    h.v = Math.hypot(h.x - o.x, h.y - o.y) / Math.max(.04, (now - o.t) / 1000);
   }
-  for (const id of [...lastHandPos.keys()]) if (!seen.has(id)) lastHandPos.delete(id);
+  for (const id of [...lastHandPos.keys()]) if (!seen.has(id)){ lastHandPos.delete(id); trails.delete(id); }
   return hs;
 }
 /* Apakah ruas p0→p1 menyentuh kotak berpusat (cx,cy) dengan setengah ukuran hx,hy? */
@@ -541,7 +558,7 @@ cv.addEventListener('pointerdown', e => { if (G.input === 'mouse') pointers.set(
 /* ---------- alur permainan ---------- */
 function readSettings(){
   const f = $('#setForm');
-  G.teams = +f.teams.value; G.dur = +f.dur.value; G.speed = +f.spd.value;
+  G.teams = +f.teams.value; G.dur = +f.dur.value; G.speed = +f.spd.value; G.style = f.gaya.value;
   soundOn = $('#snd').checked;
   const order = [['r_const', 'const'], ['r_var', 'var'], ['r_coef', 'coef'], ['r_one', 'one']];
   G.rounds = order.filter(([id]) => $('#' + id).checked).map(([, k]) => k);
@@ -561,11 +578,14 @@ function startIntro(){
   G.m = mk();
   G.items = []; G.introT = 6; G.state = 'intro'; G.paused = false;
   $('#iKick').textContent = `Ronde ${G.ri + 1} dari ${G.rounds.length}`;
-  $('#iTitle').textContent = G.m.title;
+  const verb = G.style === 'ninja' ? 'Tebas' : 'Tangkap';
+  $('#iTitle').textContent = G.m.title.replace(/^Tangkap/, verb);
+  $('#iYesLbl').textContent = verb;
+  $('#iNoLbl').textContent = G.style === 'ninja' ? 'Biarkan lewat' : 'Biarkan jatuh';
   $('#iRule').textContent = G.m.rule;
   $('#iYes').innerHTML = G.m.yes; $('#iNo').innerHTML = G.m.no;
   $('#mKick').textContent = `Ronde ${G.ri + 1} dari ${G.rounds.length}`;
-  $('#mWhat').textContent = 'Tangkap ' + G.m.short;
+  $('#mWhat').textContent = verb + ' ' + G.m.short;
   $('#mRule').textContent = G.m.rule.split('.')[0];
   $('#mSecs').textContent = G.dur;
   $('#timebar').style.transform = 'scaleX(1)';
@@ -573,7 +593,7 @@ function startIntro(){
   setLayer('intro');
 }
 function startPlay(){
-  G.state = 'play'; G.t = G.dur; G.spawnT = [0, .45];
+  G.state = 'play'; G.t = G.dur; G.spawnT = [0, .45]; G.combo = [0, 0]; G.lastCut = [1e9, 1e9];
   G.roundStats = { good: [0, 0], bad: [0, 0], mistakes: new Map() };
   setLayer('play');
 }
@@ -634,8 +654,15 @@ function spawn(team){
   const t = G.m.gen(), spr = chipSprite(t, chipSize()), { w, h } = spr, m = w / 2 + 16;
   const x0 = G.teams === 2 ? (team ? W / 2 + m : m) : m;
   const x1 = G.teams === 2 ? (team ? W - m : W / 2 - m) : W - m;
-  const sp = SPEED[G.speed];
-  G.items.push({ t, spr, x: x0 + Math.random() * Math.max(1, x1 - x0), y: -h, w, h, vy: H * sp.fall * (.85 + Math.random() * .3), rot: (Math.random() - .5) * .12, team });
+  const sp = SPEED[G.speed], rx = () => x0 + Math.random() * Math.max(1, x1 - x0);
+  if (G.style === 'ninja'){
+    // lemparan parabola: puncak di 30–58% tinggi layar (di bawah papan misi), mendarat di sisi yang sama
+    const g = H * sp.grav, x = rx(), peak = H * (.3 + Math.random() * .28);
+    const vy = -Math.sqrt(2 * g * (H + h / 2 - peak)), T = -2 * vy / g;
+    G.items.push({ t, spr, x, y: H + h / 2, w, h, vx: (rx() - x) / T, vy, g, rot: (Math.random() - .5) * .5, spin: (Math.random() - .5) * 3, team });
+    return;
+  }
+  G.items.push({ t, spr, x: rx(), y: -h, w, h, vy: H * sp.fall * (.85 + Math.random() * .3), rot: (Math.random() - .5) * .12, team });
 }
 /* Kartu suku digambar sekali ke kanvas kecil (termasuk bayangan), lalu tiap frame cukup ditempel. */
 function chipSprite(t, size){
@@ -656,14 +683,22 @@ function chipSprite(t, size){
   P.forEach((p, i) => { g.font = fonts[i]; g.fillText(p.s, x, size * .04); x += ws[i]; });
   return { c, w, h, pad };
 }
-function catchItem(it, team){
+function catchItem(it, team, cut){
   const ok = G.m.ok(it.t), rs = G.roundStats;
+  if (cut !== undefined) sliceFx(it, cut, ok ? C.good : C.bad);
   if (ok){
     G.streak[team]++;
-    const bonus = G.streak[team] > 0 && G.streak[team] % 4 === 0 ? 5 : 0;
+    let bonus = G.streak[team] > 0 && G.streak[team] % 4 === 0 ? 5 : 0;
+    let label = bonus ? `+${10 + bonus} beruntun!` : '+10';
+    if (cut !== undefined){
+      // beberapa suku benar terbelah dalam satu sabetan (jeda < 0,45 dtk) = kombo
+      G.combo[team] = G.lastCut[team] - G.t < .45 ? G.combo[team] + 1 : 1;
+      G.lastCut[team] = G.t;
+      if (G.combo[team] >= 2){ bonus += 5; label = `Kombo ×${G.combo[team]}! +${10 + bonus}`; }
+    }
     G.scores[team] += 10 + bonus; rs.good[team]++;
     sGood();
-    burst(it.x, it.y, C.good, bonus ? `+${10 + bonus} beruntun!` : '+10');
+    burst(it.x, it.y, C.good, label);
     toast('Benar', G.m.okNote ? G.m.okNote(it.t) : `${html(it.t)} termasuk ${G.m.short.toLowerCase()}.`, 'good', 1.6);
   } else {
     G.streak[team] = 0;
@@ -684,11 +719,31 @@ function burst(x, y, col, label){
   }
   G.fx.push({ k: 't', x, y, vy: -70, life: 1, max: 1, col, label });
 }
+/* Gaya Tebas: kartu terbelah dua mengikuti arah sabetan, kilatan pedang, dan cipratan warna. */
+function sliceFx(it, ang, col){
+  const nx = -Math.sin(ang), ny = Math.cos(ang), push = H * .22;
+  for (const side of [1, -1]) G.fx.push({
+    k: 'half', spr: it.spr, x: it.x, y: it.y, rot: it.rot, cut: ang - it.rot, side,
+    vx: (it.vx || 0) * .5 + nx * push * side + Math.cos(ang) * 80,
+    vy: Math.min(it.vy, 0) * .3 + ny * push * side - 60,
+    spin: side * (1.5 + Math.random() * 1.5), life: 1.1, max: 1.1
+  });
+  G.fx.push({ k: 'slash', x: it.x, y: it.y, vy: 0, ang, len: Math.max(it.w, it.h) * 1.8, life: .22, max: .22, col });
+  if (!reduceMotion) for (let i = 0; i < 24; i++){
+    const a = ang + (Math.random() < .5 ? 1 : -1) * Math.PI / 2 + (Math.random() - .5) * 1.4, sp = 160 + Math.random() * 380;
+    G.fx.push({ k: 'p', x: it.x, y: it.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 3 + Math.random() * 5, life: .7, max: .7, col });
+  }
+  sSlice();
+}
 
 function update(dt){
   if (toastT > 0 && toastT < 90){ toastT -= dt; if (toastT <= 0) hideToast(); }
   G.fx = G.fx.filter(f => (f.life -= dt) > 0);
-  for (const f of G.fx){ f.x += (f.vx || 0) * dt; f.y += f.vy * dt; if (f.k === 'p') f.vy += 500 * dt; }
+  for (const f of G.fx){
+    f.x += (f.vx || 0) * dt; f.y += f.vy * dt;
+    if (f.k === 'p') f.vy += 500 * dt;
+    else if (f.k === 'half'){ f.vy += H * 1.3 * dt; f.rot += f.spin * dt; }
+  }
   if (G.paused) return;
 
   if (G.state === 'intro'){
@@ -708,22 +763,28 @@ function update(dt){
   const every = SPEED[G.speed].every;
   for (let team = 0; team < G.teams; team++){
     G.spawnT[team] -= dt;
-    if (G.spawnT[team] <= 0){ spawn(team); G.spawnT[team] = every * (.8 + Math.random() * .4); }
+    if (G.spawnT[team] <= 0){
+      const ninja = G.style === 'ninja';
+      spawn(team); if (ninja && Math.random() < .3) spawn(team);   // kadang dua suku dilempar bersamaan
+      G.spawnT[team] = every * (ninja ? 1.15 : 1) * (.8 + Math.random() * .4);
+    }
   }
 
   const hr = Math.max(26, H * .045);
   for (const it of G.items){
+    if (it.g){ it.vy += it.g * dt; it.x += it.vx * dt; it.rot += it.spin * dt; }
     it.y += it.vy * dt;
     if (it.dead) continue;
     for (const hd of G.hands){
+      if (it.g && hd.v < H * SLASH) continue;   // gaya Tebas: hanya sabetan cepat yang membelah
       // cek seluruh lintasan tangan sejak frame sebelumnya, agar ayunan cepat tidak menembus kartu
       if (segHitsBox(hd.px, hd.py, hd.x, hd.y, it.x, it.y, it.w / 2 + hr * .7, it.h / 2 + hr * .7)){
         const team = G.teams === 2 ? (hd.x < W / 2 ? 0 : 1) : 0;
-        it.dead = true; catchItem(it, team); break;
+        it.dead = true; catchItem(it, team, it.g ? Math.atan2(hd.y - hd.py, hd.x - hd.px) : undefined); break;
       }
     }
   }
-  G.items = G.items.filter(it => !it.dead && it.y - it.h / 2 < H);
+  G.items = G.items.filter(it => !it.dead && (it.g ? !(it.vy > 0 && it.y - it.h / 2 > H) : it.y - it.h / 2 < H));
 }
 
 /* ---------- gambar ---------- */
@@ -739,6 +800,25 @@ function drawChip(it){
 }
 function drawHands(){
   const hr = Math.max(26, H * .045);
+  if (G.style === 'ninja'){
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const hd of G.hands){
+      const col = G.teams === 2 ? (hd.x < W / 2 ? C.yellow : C.sky) : C.yellow, tr = trails.get(hd.id) || [];
+      for (let i = 1; i < tr.length; i++){
+        const k = i / (tr.length - 1);   // 0 = ekor, 1 = ujung
+        for (const [c, a, lw] of [[col, .35, 6 + 22 * k], ['#ffffff', .95, 2 + 7 * k]]){
+          ctx.globalAlpha = a * k; ctx.strokeStyle = c; ctx.lineWidth = lw;
+          ctx.beginPath(); ctx.moveTo(tr[i - 1].x, tr[i - 1].y); ctx.lineTo(tr[i].x, tr[i].y); ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+      const sharp = hd.v >= H * SLASH;   // titik tangan terisi = sabetan cukup cepat untuk membelah
+      ctx.beginPath(); ctx.arc(hd.x, hd.y, hr * .4, 0, Math.PI * 2);
+      ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke();
+      if (sharp){ ctx.fillStyle = col; ctx.fill(); }
+    }
+    return;
+  }
   for (const hd of G.hands){
     const col = G.teams === 2 ? (hd.x < W / 2 ? C.yellow : C.sky) : C.yellow;
     ctx.beginPath(); ctx.arc(hd.x, hd.y, hr, 0, Math.PI * 2);
@@ -753,7 +833,23 @@ function draw(){
   for (const f of G.fx){
     const a = Math.max(0, f.life / f.max);
     ctx.globalAlpha = a;
-    if (f.k === 'p'){ ctx.fillStyle = f.col; ctx.fillRect(f.x - 4, f.y - 4, 8, 8); }
+    if (f.k === 'p'){ const r = f.r || 4; ctx.fillStyle = f.col; ctx.fillRect(f.x - r, f.y - r, r * 2, r * 2); }
+    else if (f.k === 'half'){
+      const { c, w, h, pad } = f.spr, L = w + h + pad * 2;
+      ctx.globalAlpha = Math.min(1, a * 3);
+      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot + f.cut);
+      ctx.beginPath(); ctx.rect(-L, f.side > 0 ? 0 : -L, L * 2, L); ctx.clip();
+      ctx.rotate(-f.cut); ctx.drawImage(c, -w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2);
+      ctx.restore();
+    }
+    else if (f.k === 'slash'){
+      const dx = Math.cos(f.ang) * f.len / 2, dy = Math.sin(f.ang) * f.len / 2;
+      ctx.lineCap = 'round';
+      for (const [c, lw] of [[f.col, 16 * a], ['#ffffff', 5 * a]]){
+        ctx.strokeStyle = c; ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(f.x - dx, f.y - dy); ctx.lineTo(f.x + dx, f.y + dy); ctx.stroke();
+      }
+    }
     else { ctx.font = `800 ${Math.max(28, H * .055)}px 'Bricolage Grotesque',system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = f.col; ctx.fillText(f.label, f.x, f.y); ctx.textAlign = 'start'; }
     ctx.globalAlpha = 1;
   }
