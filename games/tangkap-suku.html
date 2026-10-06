@@ -189,7 +189,7 @@ kbd{border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:v
           <ol>
             <li>Berdiri 1,5–2 meter dari kamera sampai badan dan kedua tangan terlihat.</li>
             <li>Baca misi di atas layar. Tangkap suku yang benar: +10. Salah: −5.</li>
-            <li>Gaya Tebas: suku dilempar dari bawah. Sabetkan tangan dengan cepat untuk membelahnya. Satu sabetan kena beberapa suku benar = kombo.</li>
+            <li>Gaya Tebas: suku dilempar dari bawah. Acungkan <b>jari telunjuk</b> dan sabetkan dengan cepat untuk membelahnya. Berdiri sekitar 1 meter dari kamera agar jari terbaca. Satu sabetan kena beberapa suku benar = kombo.</li>
             <li>Mode 2 tim: layar dibagi dua, tiap tim menangkap di sisinya sendiri.</li>
           </ol>
           <p class="kbd"><kbd>Spasi</kbd> jeda · <kbd>Enter</kbd> lanjut · <kbd>Esc</kbd> ke menu · <kbd>D</kbd> info kecepatan</p>
@@ -432,7 +432,7 @@ function setLayer(name){
 }
 
 /* ---------- kamera & deteksi pose ---------- */
-let pose = null, lastVT = -1;
+let pose = null, handLm = null, vision = null, lastVT = -1;
 let tracks = [], nextTrackId = 1;
 const LOST_MS = 250;
 const perf = { show: false, det: 0, detN: 0, fpsN: 0, winT: 0, detFps: 0, fps: 0 };
@@ -440,19 +440,30 @@ async function startCamera(){
   const st = $('#status');
   st.className = 'status'; st.textContent = 'Membuka kamera…';
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser ini tidak mendukung akses kamera. Gunakan Chrome atau Edge terbaru.');
-  // resolusi kecil cukup: model pose memperkecil gambar ke 256 px, dan kamera kecil jauh lebih ringan
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: 'user' }, audio: false });
+  // Tangkap: model pose memperkecil gambar ke 256 px, jadi 640x480 cukup dan ringan.
+  // Tebas: ujung jari kecil di gambar, jadi pakai resolusi lebih tinggi agar telunjuk terbaca.
+  const ninja = G.style === 'ninja';
+  const size = ninja ? { width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 640 }, height: { ideal: 480 } };
+  if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { ...size, frameRate: { ideal: 30 }, facingMode: 'user' }, audio: false });
   video.srcObject = stream; await video.play();
-  if (!pose){
-    st.textContent = 'Memuat pendeteksi gerak tubuh (sekali saja, butuh internet)…';
+  tracks = [];
+  if (ninja ? !handLm : !pose){
+    st.textContent = ninja ? 'Memuat pendeteksi jari (sekali saja, butuh internet)…' : 'Memuat pendeteksi gerak tubuh (sekali saja, butuh internet)…';
     const V = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
-    const files = await V.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-    const opts = d => ({
+    vision = vision || await V.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    const make = async (Task, opts) => {
+      try { return await Task.createFromOptions(vision, opts('GPU')); }
+      catch (e) { return await Task.createFromOptions(vision, opts('CPU')); }
+    };
+    if (ninja) handLm = await make(V.HandLandmarker, d => ({
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: d },
+      runningMode: 'VIDEO', numHands: 4, minHandDetectionConfidence: .5, minHandPresenceConfidence: .5, minTrackingConfidence: .5
+    }));
+    else pose = await make(V.PoseLandmarker, d => ({
       baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate: d },
       runningMode: 'VIDEO', numPoses: 4, minPoseDetectionConfidence: .5, minTrackingConfidence: .5
-    });
-    try { pose = await V.PoseLandmarker.createFromOptions(files, opts('GPU')); }
-    catch (e) { pose = await V.PoseLandmarker.createFromOptions(files, opts('CPU')); }
+    }));
   }
   st.textContent = '';
 }
@@ -474,14 +485,17 @@ function filterTrack(tr, x, y, t){
   tr.rx = x; tr.ry = y; tr.t = t;
 }
 function detect(now){
-  if (!pose || video.readyState < 2 || video.currentTime === lastVT) return;
+  const ninja = G.style === 'ninja', model = ninja ? handLm : pose;
+  if (!model || video.readyState < 2 || video.currentTime === lastVT) return;
   lastVT = video.currentTime;
   const t0 = performance.now();
   let res;
-  try { res = pose.detectForVideo(video, now); } catch (e) { return; }
+  try { res = model.detectForVideo(video, now); } catch (e) { return; }
   perf.det = lerp(perf.det, performance.now() - t0, .1); perf.detN++;
   const pts = [];
-  for (const lms of res.landmarks || []){
+  // Tebas: titik pedang = ujung jari telunjuk (landmark 8 dari model tangan)
+  if (ninja) for (const lms of res.landmarks || []){ if (lms[8]) pts.push(toScreen(lms[8])); }
+  else for (const lms of res.landmarks || []){
     // 15/16 pergelangan, 19/20 ujung telunjuk: titik tangan = rata-rata keduanya
     for (const [w, f] of [[15, 19], [16, 20]]){
       const a = lms[w], b = lms[f];
@@ -856,7 +870,7 @@ function draw(){
   if (G.state !== 'menu') drawHands();
   if (perf.show){
     const txt = G.input === 'cam'
-      ? `Layar ${perf.fps} fps · deteksi ${perf.detFps} fps (${perf.det.toFixed(0)} ms) · ${tracks.length} tangan`
+      ? `Layar ${perf.fps} fps · deteksi ${perf.detFps} fps (${perf.det.toFixed(0)} ms) · ${tracks.length} ${G.style === 'ninja' ? 'jari' : 'tangan'}`
       : `Layar ${perf.fps} fps · mode mouse`;
     ctx.font = `700 15px ${getComputedStyle(document.body).fontFamily}`;
     ctx.fillStyle = 'rgba(12,28,24,.85)'; ctx.fillRect(12, H - 40, ctx.measureText(txt).width + 20, 28);
